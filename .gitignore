@@ -1,0 +1,73 @@
+# ── Dependencies ──────────────────────────────────────────────────────
+node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+
+# ── Build / TypeScript ────────────────────────────────────────────────
+build/
+dist/
+out/
+*.tsbuildinfo
+.tsbuildinfo
+
+# ── Test / coverage ───────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ── Logs ──────────────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Env / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+.envrc
+
+# ── Editor / IDE ──────────────────────────────────────────────────────
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.code-workspace
+*.swp
+*.swo
+*.swn
+*~
+*.bak
+.history/
+
+# ── Tooling caches ────────────────────────────────────────────────────
+.eslintcache
+.stylelintcache
+.cache/
+.turbo/
+.parcel-cache/
+
+# ── OS ────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ── Packaging ─────────────────────────────────────────────────────────
+*.tgz
+*.tar.gz
+
+# ── AI / agent tooling ────────────────────────────────────────────────
+.serena/
+.claude/
+.cursor/
+.aider*
+.github/copilot/
+CLAUDE.md.local
