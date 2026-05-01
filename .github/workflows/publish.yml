@@ -1,0 +1,89 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v3.1.0). Used only for manual dispatch.'
+        required: true
+        type: string
+      dry-run:
+        description: 'If true, run npm publish --dry-run only (no actual publish).'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write   # required for npm provenance attestation (Sigstore)
+
+concurrency:
+  group: publish-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish ${{ github.event.release.tag_name || github.event.inputs.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/mtender-mcp-server
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+          fetch-depth: 0
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          registry-url: 'https://registry.npmjs.org'
+          always-auth: true
+
+      - name: Verify package.json version matches tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          tag_version="${tag#v}"
+          pkg_version=$(node -p "require('./package.json').version")
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::tag $tag (=$tag_version) does not match package.json version $pkg_version"
+            exit 1
+          fi
+          echo "Publishing $pkg_version from tag $tag"
+
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Test (final guard against shipping broken code)
+        run: npm test
+
+      - name: Publish (dry run)
+        if: ${{ inputs.dry-run == true }}
+        run: npm publish --provenance --access public --dry-run
+
+      - name: Publish
+        if: ${{ inputs.dry-run != true }}
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          echo "### Published ${{ github.event.release.tag_name || github.event.inputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Package: https://www.npmjs.com/package/mtender-mcp-server" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Provenance: enabled (Sigstore)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dry run: ${{ inputs.dry-run }}" >> "$GITHUB_STEP_SUMMARY"

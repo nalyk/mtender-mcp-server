@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/nalyk/mtender-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/nalyk/mtender-mcp-server/actions/workflows/codeql.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/codeql.yml)
+[![npm version](https://img.shields.io/npm/v/mtender-mcp-server.svg?logo=npm)](https://www.npmjs.com/package/mtender-mcp-server)
+[![npm downloads](https://img.shields.io/npm/dm/mtender-mcp-server.svg)](https://www.npmjs.com/package/mtender-mcp-server)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![MCP](https://img.shields.io/badge/MCP-2025--11--25-purple.svg)](https://modelcontextprotocol.io/specification/2025-11-25)
@@ -93,17 +95,52 @@ Slow aggregating tools emit `notifications/progress` per upstream fetch.
 
 OCID arguments are autocompleted from the live `mtender://tenders/latest` list.
 
+## Install
+
+From npm:
+
+```bash
+# one-shot, no install (recommended for MCP host configs)
+npx mtender-mcp-server
+
+# or globally
+npm install -g mtender-mcp-server
+mtender-mcp                                          # stdio
+MCP_TRANSPORT=http mtender-mcp                       # Streamable HTTP
+```
+
+From source (for contributing):
+
+```bash
+git clone git@github.com:nalyk/mtender-mcp-server.git
+cd mtender-mcp-server
+npm install
+npm run build
+```
+
 ## Run
 
 ```bash
-npm install
-npm run build
-
 # stdio (local MCP host)
 node build/index.js
 
 # Streamable HTTP (remote / shared)
 MCP_TRANSPORT=http PORT=8787 HOST=127.0.0.1 node build/index.js
+```
+
+### Use with Claude Desktop / MCP host
+
+Add to your host's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "mtender": {
+      "command": "npx",
+      "args": ["-y", "mtender-mcp-server"]
+    }
+  }
+}
 ```
 
 Dev:

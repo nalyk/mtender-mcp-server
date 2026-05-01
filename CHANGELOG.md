@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- npm publish workflow with [npm provenance](https://docs.npmjs.com/generating-provenance-statements)
+  (Sigstore-attested), triggered on GitHub release publish or manual
+  workflow dispatch. Public access, registry `https://registry.npmjs.org/`.
+- `package.json` hardened for publishing: repository, homepage, bugs,
+  keywords, author, license, `publishConfig.provenance`, `prepack` and
+  `prepublishOnly` build hooks.
+
 ## [3.1.0] — 2026-05-01
 
 Initial public release.

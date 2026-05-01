@@ -1,25 +1,66 @@
 {
   "name": "mtender-mcp-server",
   "version": "3.1.0",
-  "description": "Modern MCP server for Moldova's MTender public procurement data (OCDS).",
-  "private": true,
+  "description": "Modern MCP server for Moldova's MTender public procurement data (OCDS 1.1.5). Protocol revision 2025-11-25. Tools, resources, prompts, vision-OCR for scanned PDFs, SSRF-hardened.",
   "type": "module",
-  "engines": {
-    "node": ">=22"
-  },
+  "main": "./build/index.js",
   "bin": {
     "mtender-mcp": "./build/index.js"
   },
   "files": [
-    "build"
+    "build",
+    "!build/**/*.test.*",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
+  "engines": {
+    "node": ">=22"
+  },
+  "author": {
+    "name": "Ion (Nalyk) Calmîș",
+    "email": "dev.ungheni@gmail.com",
+    "url": "https://github.com/nalyk"
+  },
+  "license": "ISC",
+  "homepage": "https://github.com/nalyk/mtender-mcp-server#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nalyk/mtender-mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nalyk/mtender-mcp-server/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "modelcontextprotocol",
+    "anthropic",
+    "claude",
+    "ocds",
+    "open-contracting",
+    "procurement",
+    "moldova",
+    "mtender",
+    "transparency",
+    "govtech",
+    "typescript",
+    "ai-agents",
+    "llm-tools"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "build": "tsc && node -e \"import('node:fs').then(({chmodSync}) => chmodSync('build/index.js', 0o755))\"",
     "dev": "tsx watch src/index.ts",
     "start": "node build/index.js",
     "test": "node --test --import tsx test/**/*.test.ts",
     "inspector": "npx @modelcontextprotocol/inspector node build/index.js",
-    "prepare": "npm run build"
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
