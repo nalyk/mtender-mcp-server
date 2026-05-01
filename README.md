@@ -1,5 +1,14 @@
 # mtender-mcp-server
 
+[![CI](https://github.com/nalyk/mtender-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/nalyk/mtender-mcp-server/actions/workflows/codeql.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/codeql.yml)
+[![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](./LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
+[![MCP](https://img.shields.io/badge/MCP-2025--11--25-purple.svg)](https://modelcontextprotocol.io/specification/2025-11-25)
+[![SDK](https://img.shields.io/badge/%40modelcontextprotocol%2Fsdk-1.29-purple.svg)](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
+[![OCDS](https://img.shields.io/badge/OCDS-1.1.5-success.svg)](https://standard.open-contracting.org/)
+[![Release](https://img.shields.io/github/v/release/nalyk/mtender-mcp-server?include_prereleases&sort=semver)](https://github.com/nalyk/mtender-mcp-server/releases)
+
 Production-grade Model Context Protocol server for Moldova's MTender public
 procurement data, modeled on the
 [Open Contracting Data Standard 1.1.5](https://standard.open-contracting.org/).

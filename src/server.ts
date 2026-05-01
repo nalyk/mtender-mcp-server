@@ -4,7 +4,7 @@ import { registerTools } from "./tools.js";
 import { registerPrompts } from "./prompts.js";
 
 export const SERVER_NAME = "mtender-mcp-server";
-export const SERVER_VERSION = "3.0.0";
+export const SERVER_VERSION = "3.1.0";
 
 export function createServer(): McpServer {
   const server = new McpServer(

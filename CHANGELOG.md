@@ -1,0 +1,66 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [3.1.0] — 2026-05-01
+
+Initial public release.
+
+### Added
+
+- **Tiered document extraction.** `fetch_tender_document` now detects
+  scanned PDFs (Canon / HP / Epson scanner-producer signature, low
+  char-per-byte density, absent Romanian diacritics) and returns per-page
+  JPEG `image` content blocks for the host's vision LLM to OCR. Handles
+  Romanian / Russian / English / mixed text without local OCR
+  infrastructure. Native-text PDFs continue to extract via `unpdf`. New
+  `mode: auto | text | image` argument lets callers force a strategy.
+- **DOCX with tables.** Switched from `mammoth.extractRawText` to
+  `mammoth.convertToHtml` + a minimal HTML→Markdown converter that
+  preserves GFM tables.
+- **Three additional listing endpoints.** `/tenders/cn`, `/tenders/plan`,
+  `/budgets` are exposed both as resources (`mtender://contract-notices/latest`,
+  `mtender://plans/latest`, `mtender://budgets/latest`) and tools
+  (`search_contract_notices`, `search_plans`, `search_budgets`).
+- **First-class OCDS structures.** `TenderSummary` now exposes `lots[]`,
+  `enquiries[]` (public Q&A), `bidStatistics[]`, `procurementMethodModalities`,
+  and `hasElectronicAuction`. New tools `list_lots`, `list_enquiries`,
+  `list_bid_statistics`.
+- **Aggregations.** `aggregate_by_buyer`, `aggregate_by_supplier`, and
+  `flag_single_bid_awards` fan out across the latest N tenders with
+  bounded concurrency and emit progress notifications.
+- **Procurement-investigation prompts.** `analyze-procurement`,
+  `compare-tenders`, `audit-supplier`, `single-bid-investigation`,
+  `buyer-spend-overview`, `enquiry-review`, `lot-breakdown`,
+  `pipeline-overview`. OCID arguments autocomplete from live data.
+- **Upstream observability.** `mtender://upstream/health` surfaces the
+  upstream `/actuator/health` + build info.
+- **Streamable HTTP transport.** Stateless sessions, DNS-rebinding
+  protection via the SDK's host-validation middleware, bound to
+  `127.0.0.1` by default.
+- **SSRF defense in depth on document fetch.** URL parse →
+  exact-hostname allow-list → DNS lookup → reject of RFC1918 / loopback
+  / link-local / `169.254.169.254` (AWS/GCP IMDS) / IPv6 ULA.
+- **Operational hardening.** `undici` keep-alive Agent (8 sockets),
+  per-resource TTL+LRU caches (10 min), bounded fan-out (4-way), retry
+  on transient network errors only.
+- **20 tests** against live MTender via the SDK's `InMemoryTransport` +
+  SSRF guard tests.
+
+### Architecture
+
+- MCP protocol revision **2025-11-25**, SDK **1.29**.
+- Node.js 22+ (LTS through 2027-04-30), TypeScript strict, ESM only.
+- Distroless multi-stage Docker image, `nonroot` user.
+- Compiles a real OCDS record by fanning out to the upstream `packages[]`
+  release-package URIs and merging by id-union — fixes the legacy bug
+  where `compiledRelease` was sparse and consumers got empty
+  `awards[]` / `items[]` / `parties[]` arrays.
+
+[Unreleased]: https://github.com/nalyk/mtender-mcp-server/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/nalyk/mtender-mcp-server/releases/tag/v3.1.0

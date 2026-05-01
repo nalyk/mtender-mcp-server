@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a tool, resource, prompt, or behavior.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can a daily-driver senior NOT do today that they need to?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        Tool/resource/prompt name, inputs, outputs, and which upstream
+        endpoint(s) it relies on. If it depends on data MTender does not
+        publish, say so.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

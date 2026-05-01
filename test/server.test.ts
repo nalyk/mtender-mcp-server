@@ -13,11 +13,11 @@ async function pair(): Promise<Client> {
   return client;
 }
 
-test("initialize identifies as v3", async () => {
+test("initialize identifies as v3.1.0", async () => {
   const client = await pair();
   const v = client.getServerVersion();
   assert.equal(v?.name, "mtender-mcp-server");
-  assert.equal(v?.version, "3.0.0");
+  assert.equal(v?.version, "3.1.0");
   await client.close();
 });
 

@@ -1,6 +1,6 @@
 {
   "name": "mtender-mcp-server",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Modern MCP server for Moldova's MTender public procurement data (OCDS).",
   "private": true,
   "type": "module",
