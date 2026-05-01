@@ -1,10 +1,18 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerResources } from "./resources.js";
 import { registerTools } from "./tools.js";
 import { registerPrompts } from "./prompts.js";
 
-export const SERVER_NAME = "mtender-mcp-server";
-export const SERVER_VERSION = "3.1.0";
+// Single source of truth: read version from package.json at runtime so
+// `npm version` can bump everything in one place (no drift).
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
+);
+
+export const SERVER_NAME: string = pkg.name;
+export const SERVER_VERSION: string = pkg.version;
 
 export function createServer(): McpServer {
   const server = new McpServer(

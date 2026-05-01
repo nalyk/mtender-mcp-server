@@ -13,11 +13,16 @@ async function pair(): Promise<Client> {
   return client;
 }
 
-test("initialize identifies as v3.1.0", async () => {
+test("initialize identifies the server with package.json version", async () => {
   const client = await pair();
   const v = client.getServerVersion();
   assert.equal(v?.name, "mtender-mcp-server");
-  assert.equal(v?.version, "3.1.0");
+  assert.match(v?.version ?? "", /^\d+\.\d+\.\d+/, "version must be valid semver");
+  // Drift check: reported version must match package.json so `npm version`
+  // bumps stay in sync without code edits.
+  const { readFileSync } = await import("node:fs");
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(v?.version, pkg.version);
   await client.close();
 });
 
