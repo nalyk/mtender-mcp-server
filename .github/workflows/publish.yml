@@ -35,10 +35,13 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       # OIDC trusted publishing requires npm >= 11.5.1.
-      # Node 24 ships with npm 10.x, so upgrade explicitly.
+      # Node 22/24 ships with npm 10.x, so upgrade explicitly.
+      # `--force` works around the well-known self-upgrade race in npm 10.x
+      # where arborist's mid-upgrade dependency tree (e.g. promise-retry) is
+      # transiently unresolvable.
       - name: Upgrade npm to >=11.5.1
         run: |
-          npm install -g npm@latest
+          npm install -g --force npm@latest
           echo "npm: $(npm --version)"
 
       - run: npm ci --no-audit --no-fund
