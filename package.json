@@ -3,16 +3,19 @@
   "version": "3.1.0",
   "description": "Modern MCP server for Moldova's MTender public procurement data (OCDS 1.1.5). Protocol revision 2025-11-25. Tools, resources, prompts, vision-OCR for scanned PDFs, SSRF-hardened.",
   "type": "module",
-  "main": "./build/index.js",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
   "bin": {
-    "mtender-mcp": "./build/index.js"
+    "mtender-mcp": "build/index.js"
   },
   "files": [
     "build",
     "!build/**/*.test.*",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "SECURITY.md",
+    ".env.example"
   ],
   "engines": {
     "node": ">=22"
@@ -50,7 +53,6 @@
   ],
   "publishConfig": {
     "access": "public",
-    "provenance": true,
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {

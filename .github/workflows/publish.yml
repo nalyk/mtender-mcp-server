@@ -1,105 +1,92 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to publish (e.g. v3.1.0). Used only for manual dispatch.'
-        required: true
-        type: string
-      dry-run:
-        description: 'If true, run npm publish --dry-run only (no actual publish).'
-        required: false
-        type: boolean
-        default: false
 
+# OIDC trusted publishing: id-token:write is the lever — npm registry verifies
+# the GitHub OIDC token and authorizes the publish. contents:write is for the
+# auto-create-GitHub-Release step.
 permissions:
-  contents: read
-  id-token: write   # required for npm provenance attestation (Sigstore)
+  contents: write
+  id-token: write
 
 concurrency:
-  group: publish-${{ github.event.release.tag_name || github.event.inputs.tag }}
+  group: publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: publish ${{ github.event.release.tag_name || github.event.inputs.tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: npm
       url: https://www.npmjs.com/package/mtender-mcp-server
     steps:
-      - name: Checkout tag
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.event.inputs.tag }}
           fetch-depth: 0
 
-      - name: Setup Node 22
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          cache: npm
+          node-version-file: .nvmrc
           registry-url: 'https://registry.npmjs.org'
-          always-auth: true
 
-      - name: Upgrade npm (>=11 enables OIDC trusted-publisher)
-        run: npm install -g npm@latest && npm --version
-
-      - name: Preflight — confirm NPM_TOKEN authenticates
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # OIDC trusted publishing requires npm >= 11.5.1.
+      # Node 24 ships with npm 10.x, so upgrade explicitly.
+      - name: Upgrade npm to >=11.5.1
         run: |
-          set -euo pipefail
-          if ! who=$(npm whoami 2>&1); then
-            echo "::error::npm whoami failed: $who"
-            echo "::error::Likely causes: NPM_TOKEN is invalid, expired, or has wrong scope."
-            echo "::error::Fix: regenerate as a Granular Access Token with 'Bypass two-factor authentication' enabled, OR migrate to npm trusted publishers (OIDC, no token needed)."
+          npm install -g npm@latest
+          echo "npm: $(npm --version)"
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Verify tag matches package.json version
+        if: github.ref_type == 'tag'
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' (=$TAG) does not match package.json version '$PKG'"
             exit 1
           fi
-          echo "Authenticated as: $who"
+          echo "Tag and package.json version both = $PKG"
 
-      - name: Verify package.json version matches tag
-        shell: bash
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build
+
+      # Idempotency guard: makes workflow_dispatch re-runs safe.
+      - name: Skip publish if version already on npm
+        id: check
         run: |
-          set -euo pipefail
-          tag="${{ github.event.release.tag_name || github.event.inputs.tag }}"
-          tag_version="${tag#v}"
-          pkg_version=$(node -p "require('./package.json').version")
-          if [ "$tag_version" != "$pkg_version" ]; then
-            echo "::error::tag $tag (=$tag_version) does not match package.json version $pkg_version"
-            exit 1
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "already_published=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${NAME}@${VERSION} already on npm — skipping publish step."
+          else
+            echo "already_published=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "Publishing $pkg_version from tag $tag"
 
-      - name: Install
-        run: npm ci --ignore-scripts
+      # No --provenance flag, no NODE_AUTH_TOKEN — OIDC handles both.
+      - name: Publish to npm via OIDC
+        if: steps.check.outputs.already_published == 'false'
+        run: npm publish --access public
 
-      - name: Build
-        run: npm run build
-
-      - name: Test (final guard against shipping broken code)
-        run: npm test
-
-      - name: Publish (dry run)
-        if: ${{ inputs.dry-run == true }}
-        run: npm publish --provenance --access public --dry-run
-
-      - name: Publish
-        if: ${{ inputs.dry-run != true }}
-        run: npm publish --provenance --access public
+      - name: Create GitHub Release (if missing)
+        if: github.ref_type == 'tag'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Summary
-        if: ${{ always() }}
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "### Published ${{ github.event.release.tag_name || github.event.inputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Package: https://www.npmjs.com/package/mtender-mcp-server" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Provenance: enabled (Sigstore)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Dry run: ${{ inputs.dry-run }}" >> "$GITHUB_STEP_SUMMARY"
+          if gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists — leaving it alone."
+          else
+            gh release create "${GITHUB_REF_NAME}" \
+              --repo "${{ github.repository }}" \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes \
+              --latest
+          fi
