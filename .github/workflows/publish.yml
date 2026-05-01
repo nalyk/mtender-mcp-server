@@ -46,6 +46,22 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           always-auth: true
 
+      - name: Upgrade npm (>=11 enables OIDC trusted-publisher)
+        run: npm install -g npm@latest && npm --version
+
+      - name: Preflight — confirm NPM_TOKEN authenticates
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! who=$(npm whoami 2>&1); then
+            echo "::error::npm whoami failed: $who"
+            echo "::error::Likely causes: NPM_TOKEN is invalid, expired, or has wrong scope."
+            echo "::error::Fix: regenerate as a Granular Access Token with 'Bypass two-factor authentication' enabled, OR migrate to npm trusted publishers (OIDC, no token needed)."
+            exit 1
+          fi
+          echo "Authenticated as: $who"
+
       - name: Verify package.json version matches tag
         shell: bash
         run: |
