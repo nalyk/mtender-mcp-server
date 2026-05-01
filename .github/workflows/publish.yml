@@ -29,20 +29,25 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Node 24 ships with npm 11+ natively. We deliberately use 24 here
+      # (not the .nvmrc-pinned 22) because OIDC trusted publishing requires
+      # npm >= 11.5.1, and the toolcache npm 10.x in the Node 22 image
+      # cannot self-upgrade reliably (arborist promise-retry race).
       - uses: actions/setup-node@v4
         with:
-          node-version-file: .nvmrc
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      # OIDC trusted publishing requires npm >= 11.5.1.
-      # Node 22/24 ships with npm 10.x, so upgrade explicitly.
-      # `--force` works around the well-known self-upgrade race in npm 10.x
-      # where arborist's mid-upgrade dependency tree (e.g. promise-retry) is
-      # transiently unresolvable.
-      - name: Upgrade npm to >=11.5.1
+      - name: Verify npm >=11.5.1
         run: |
-          npm install -g --force npm@latest
-          echo "npm: $(npm --version)"
+          set -euo pipefail
+          ver=$(npm --version)
+          echo "npm: $ver"
+          # Lexicographic compare works for semver up to 99.99.99.
+          if [ "$(printf '%s\n' '11.5.1' "$ver" | sort -V | head -1)" != "11.5.1" ]; then
+            echo "::error::npm $ver < 11.5.1 — OIDC publish needs >= 11.5.1"
+            exit 1
+          fi
 
       - run: npm ci --no-audit --no-fund
 
