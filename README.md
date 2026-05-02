@@ -1,5 +1,6 @@
 # mtender-mcp-server
 
+[![Listed on Yoda Digital Open Source](https://img.shields.io/badge/listed%20on-opensource.yoda.digital-af9568?style=flat-square)](https://opensource.yoda.digital/projects/mtender-mcp-server/)
 [![CI](https://github.com/nalyk/mtender-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/nalyk/mtender-mcp-server/actions/workflows/codeql.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/codeql.yml)
 [![Publish](https://github.com/nalyk/mtender-mcp-server/actions/workflows/publish.yml/badge.svg)](https://github.com/nalyk/mtender-mcp-server/actions/workflows/publish.yml)
