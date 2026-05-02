@@ -72,7 +72,7 @@
     "sharp": "^0.34.5",
     "undici": "^8.1.0",
     "unpdf": "^1.6.2",
-    "zod": "^3.25.0"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
