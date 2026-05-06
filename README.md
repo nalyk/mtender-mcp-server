@@ -135,6 +135,18 @@ MCP_TRANSPORT=http PORT=8787 HOST=127.0.0.1 npx -y mtender-mcp-server
 | `HOST` | `127.0.0.1` | HTTP bind host. localhost auto-enables DNS-rebinding protection |
 | `ALLOWED_HOSTS` | (auto) | Comma-separated host allow-list when binding to non-localhost |
 | `LOG_LEVEL` | `info` | pino level — `trace` `debug` `info` `warn` `error` `fatal` |
+| `MCP_AUTH_MODE` | `none` | `none` or `bearer` (RFC 9068 OAuth 2.1 Bearer token gate on `/mcp`) |
+| `MCP_AUTH_ISSUER` | — | Required when `MCP_AUTH_MODE=bearer`. URL of the Authorization Server. |
+| `MCP_AUTH_AUDIENCE` | — | Required when `MCP_AUTH_MODE=bearer`. Token audience (RFC 8707) — typically `https://your-host.example/mcp`. |
+| `MCP_AUTH_JWKS_URL` | (auto) | Override of the discovered `jwks_uri`. Auto-discovered from `<issuer>/.well-known/oauth-authorization-server` (or `/openid-configuration`) when unset. |
+| `MCP_AUTH_REQUIRED_SCOPES` | — | Comma- or space-separated scopes the token must carry, e.g. `mcp:read`. Empty = no scope check (still authenticates). |
+
+When `MCP_AUTH_MODE=bearer` is on, the server also publishes RFC 9728
+Protected Resource Metadata at `/.well-known/oauth-protected-resource{path}`
+so unauthenticated clients can discover the AS to obtain a token from. The
+`/healthz` endpoint stays public (liveness probes have no credentials).
+Refusing without `bearer` while bound to a non-localhost interface emits a
+warning — defense in depth for accidental public exposure.
 
 ## Capabilities
 

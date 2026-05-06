@@ -1,14 +1,19 @@
 #!/usr/bin/env node
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { createServer, SERVER_NAME, SERVER_VERSION } from "./server.js";
+import { startHttpServer, type HttpServerHandle } from "./http.js";
+import { buildAuthHandles, type AuthConfig } from "./http/auth.js";
 import { logger } from "./logger.js";
 
+let httpHandle: HttpServerHandle | null = null;
+let stdioServer: McpServer | null = null;
+let shuttingDown = false;
+
 async function runStdio(): Promise<void> {
-  const server = createServer();
+  stdioServer = createServer();
   const transport = new StdioServerTransport();
-  await server.connect(transport);
+  await stdioServer.connect(transport);
   logger.info({ name: SERVER_NAME, version: SERVER_VERSION }, "stdio transport ready");
 }
 
@@ -18,49 +23,79 @@ async function runHttp(): Promise<void> {
   const allowedHostsEnv = process.env.ALLOWED_HOSTS;
   const allowedHosts = allowedHostsEnv?.split(",").map((s) => s.trim()).filter(Boolean);
 
-  const app = createMcpExpressApp(allowedHosts ? { host, allowedHosts } : { host });
-
-  const server = createServer();
-  // Stateless: no per-session state, every request initializes its own context.
-  // Aligns with the 2026 roadmap "horizontal scaling without sessions" priority.
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  await server.connect(transport);
-
-  app.post("/mcp", async (req, res) => {
-    try {
-      await transport.handleRequest(req, res, req.body);
-    } catch (err) {
-      logger.error({ err }, "POST /mcp handler error");
-      if (!res.headersSent) res.status(500).end();
+  // Optional OAuth 2.1 Bearer-token gate (RFC 9068 + RFC 8707).
+  // Default: MCP_AUTH_MODE=none → no auth (suitable for HOST=127.0.0.1).
+  // Production deployments on a non-localhost interface should set MCP_AUTH_MODE=bearer
+  // and provide the issuer/audience/scopes the deployment expects.
+  const mode = (process.env.MCP_AUTH_MODE ?? "none").toLowerCase();
+  let auth: { requireAuth?: import("express").RequestHandler; metadataRouter?: import("express").RequestHandler } = {};
+  if (mode === "bearer") {
+    const issuer = process.env.MCP_AUTH_ISSUER;
+    const audience = process.env.MCP_AUTH_AUDIENCE;
+    if (!issuer || !audience) {
+      throw new Error(
+        "MCP_AUTH_MODE=bearer requires MCP_AUTH_ISSUER and MCP_AUTH_AUDIENCE",
+      );
     }
-  });
-  app.get("/mcp", async (req, res) => {
-    try {
-      await transport.handleRequest(req, res);
-    } catch (err) {
-      logger.error({ err }, "GET /mcp handler error");
-      if (!res.headersSent) res.status(500).end();
-    }
-  });
-  app.delete("/mcp", async (req, res) => {
-    try {
-      await transport.handleRequest(req, res);
-    } catch (err) {
-      logger.error({ err }, "DELETE /mcp handler error");
-      if (!res.headersSent) res.status(500).end();
-    }
-  });
+    const cfg: AuthConfig = {
+      issuer,
+      audience,
+      jwksUrl: process.env.MCP_AUTH_JWKS_URL,
+      requiredScopes: (process.env.MCP_AUTH_REQUIRED_SCOPES ?? "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+    const handles = await buildAuthHandles(cfg);
+    auth = { requireAuth: handles.requireAuth, metadataRouter: handles.metadataRouter };
+  } else if (mode !== "none") {
+    throw new Error(`Unknown MCP_AUTH_MODE: ${mode}. Expected "none" or "bearer".`);
+  } else if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    logger.warn(
+      { host },
+      "MCP_AUTH_MODE=none with non-localhost HOST — anyone reachable can call /mcp.",
+    );
+  }
 
-  app.get("/healthz", (_req, res) => {
-    res.json({ ok: true, name: SERVER_NAME, version: SERVER_VERSION });
-  });
-
-  app.listen(port, host, () => {
-    logger.info({ host, port, url: `http://${host}:${port}/mcp` }, "Streamable HTTP transport ready");
+  httpHandle = await startHttpServer({
+    host,
+    port,
+    allowedHosts,
+    createServer,
+    serverName: SERVER_NAME,
+    serverVersion: SERVER_VERSION,
+    ...auth,
   });
 }
 
+async function shutdown(signal: string, exitCode: 0 | 1 = 0): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, "Shutting down");
+  try {
+    if (httpHandle) await httpHandle.close();
+    if (stdioServer) await stdioServer.close();
+  } catch (err) {
+    logger.error({ err: err instanceof Error ? err.message : err }, "Error during shutdown");
+  } finally {
+    // Give pino's async write a tick to flush the final log lines.
+    // .unref() so this timer doesn't itself keep the loop alive.
+    setTimeout(() => process.exit(exitCode), 50).unref();
+  }
+}
+
 async function main(): Promise<void> {
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err: err.message, stack: err.stack }, "Uncaught exception");
+    void shutdown("uncaughtException", 1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    logger.fatal({ reason: String(reason) }, "Unhandled rejection");
+    void shutdown("unhandledRejection", 1);
+  });
+
   const mode = process.env.MCP_TRANSPORT ?? "stdio";
   if (mode === "stdio") {
     await runStdio();

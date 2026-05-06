@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerResources } from "./resources.js";
-import { registerTools } from "./tools.js";
+import { registerTools } from "./tools/index.js";
 import { registerPrompts } from "./prompts.js";
 
 // Single source of truth: read version from package.json at runtime so
@@ -39,7 +39,7 @@ export function createServer(): McpServer {
         "  mtender://budgets/{ocid}               — planning budget",
         "  mtender://funding/{ocid}               — funding source",
         "",
-        "Tools (16):",
+        "Tools (17):",
         "  search_tenders / search_contract_notices / search_plans / search_budgets",
         "  search_tenders_deep                    — buyer/supplier/CPV/value/status filters",
         "  get_tender                             — full compiled record (parties, lots, items, awards, contracts, enquiries, bids)",
