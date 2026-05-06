@@ -52,6 +52,21 @@ async function progress(
   });
 }
 
+// Honors the `logging: {}` server capability declared in server.ts. Hosts that
+// subscribe via `logging/setLevel` get structured event data; others ignore.
+// Failures are swallowed: logging is never load-bearing for tool correctness.
+async function logEvent(
+  server: McpServer,
+  level: "debug" | "info" | "notice" | "warning" | "error",
+  data: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await server.sendLoggingMessage({ level, data, logger: "mtender" });
+  } catch {
+    // sendLoggingMessage rejects if the client never subscribed — non-fatal.
+  }
+}
+
 function tenderLink(ocid: string, name?: string, description?: string) {
   return {
     type: "resource_link" as const,
@@ -382,8 +397,15 @@ export function registerTools(server: McpServer): void {
       const rows = [...buckets.entries()]
         .map(([buyer, v]) => ({ buyer, tenders: v.count, totalValue: v.total, currency: v.currency }))
         .sort((a, b) => b.totalValue - a.totalValue);
+      const scanned = summaries.filter(Boolean).length;
+      await logEvent(server, "info", {
+        event: "aggregate_by_buyer.complete",
+        scanned,
+        buyersFound: rows.length,
+        topBuyer: rows[0]?.buyer ?? null,
+      });
       return {
-        structuredContent: { rows, scanned: summaries.filter(Boolean).length },
+        structuredContent: { rows, scanned },
         content: [{ type: "text", text: `Top buyer: ${rows[0]?.buyer ?? "n/a"}` }],
       };
     },
@@ -427,8 +449,15 @@ export function registerTools(server: McpServer): void {
           ocids: [...v.ocids],
         }))
         .sort((a, b) => b.totalValue - a.totalValue);
+      const scanned = summaries.filter(Boolean).length;
+      await logEvent(server, "info", {
+        event: "aggregate_by_supplier.complete",
+        scanned,
+        suppliersFound: rows.length,
+        topSupplier: rows[0]?.supplier ?? null,
+      });
       return {
-        structuredContent: { rows, scanned: summaries.filter(Boolean).length },
+        structuredContent: { rows, scanned },
         content: [{ type: "text", text: `Top supplier: ${rows[0]?.supplier ?? "n/a"}` }],
       };
     },
@@ -462,6 +491,12 @@ export function registerTools(server: McpServer): void {
         }
       }
       const scanned = summaries.length;
+      await logEvent(server, "warning", {
+        event: "single_bid_scan.complete",
+        scanned,
+        flagged: flagged.length,
+        rate: scanned > 0 ? flagged.length / scanned : 0,
+      });
       return {
         structuredContent: { flagged, scanned },
         content: [{ type: "text", text: `Flagged ${flagged.length}/${scanned}` }],
@@ -642,6 +677,13 @@ export function registerTools(server: McpServer): void {
       > = [];
 
       if (extracted.scanned && imageParts.length) {
+        await logEvent(server, "info", {
+          event: "scanned_pdf_detected",
+          host: validated.url.hostname,
+          pages: extracted.pages,
+          imageCount: imageParts.length,
+          contentType: extracted.contentType,
+        });
         content.push({
           type: "text",
           text: `Scanned PDF detected (${extracted.pages} pages). Embedded extracted text was unreliable; returning ${imageParts.length} page image(s) for vision OCR. ${

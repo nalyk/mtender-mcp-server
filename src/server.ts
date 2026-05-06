@@ -39,7 +39,7 @@ export function createServer(): McpServer {
         "  mtender://budgets/{ocid}               — planning budget",
         "  mtender://funding/{ocid}               — funding source",
         "",
-        "Tools (16):",
+        "Tools (17):",
         "  search_tenders / search_contract_notices / search_plans / search_budgets",
         "  search_tenders_deep                    — buyer/supplier/CPV/value/status filters",
         "  get_tender                             — full compiled record (parties, lots, items, awards, contracts, enquiries, bids)",
