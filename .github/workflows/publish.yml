@@ -33,7 +33,7 @@ jobs:
       # (not the .nvmrc-pinned 22) because OIDC trusted publishing requires
       # npm >= 11.5.1, and the toolcache npm 10.x in the Node 22 image
       # cannot self-upgrade reliably (arborist promise-retry race).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
