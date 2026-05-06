@@ -235,6 +235,24 @@ test("search_tenders defaults to last 30 days and returns resource_link blocks",
   await client.close();
 });
 
+test("search_tenders with limit > upstream default page actually fetches more (proves limit is sent upstream)", async () => {
+  const client = await pair();
+  // Upstream default page size is ~100. Asking for 150 with the limit param
+  // wired up should return > 100; without the wiring (slice-only), this
+  // tops out at the upstream default and fails this assertion.
+  const r = await client.callTool({
+    name: "search_tenders",
+    arguments: { offset: "2026-04-01T00:00:00Z", limit: 150 },
+  });
+  assert.equal(r.isError, undefined);
+  const sc = r.structuredContent as { items: unknown[]; count: number };
+  assert.ok(
+    sc.items.length > 100,
+    `expected > 100 items with limit=150; got ${sc.items.length} (upstream limit param not being sent?)`,
+  );
+  await client.close();
+});
+
 test("aggregate_by_buyer scans recent tenders and returns ranked rows", async () => {
   const client = await pair();
   const r = await client.callTool({ name: "aggregate_by_buyer", arguments: { scanLatest: 10 } });

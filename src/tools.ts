@@ -114,7 +114,7 @@ export function registerTools(server: McpServer): void {
       annotations: { ...READ_ONLY, title: "Search tenders" },
     },
     async ({ offset, limit, dateFrom, dateTo }, ctx) => {
-      const { data, nextOffset } = await listTenders({ offset, signal: ctx.signal });
+      const { data, nextOffset } = await listTenders({ offset, limit, signal: ctx.signal });
       const from = dateFrom ? new Date(dateFrom).getTime() : -Infinity;
       const to = dateTo ? new Date(dateTo).getTime() : Infinity;
       const filtered = data.filter((d) => {
@@ -495,7 +495,7 @@ export function registerTools(server: McpServer): void {
         annotations: { ...READ_ONLY, title: name },
       },
       async ({ offset, limit }, ctx) => {
-        const { data, nextOffset } = await listFn({ offset, signal: ctx.signal });
+        const { data, nextOffset } = await listFn({ offset, limit, signal: ctx.signal });
         const limited = data.slice(0, limit);
         return {
           structuredContent: { items: limited, count: limited.length, nextOffset },
