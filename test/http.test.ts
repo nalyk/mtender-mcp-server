@@ -1,5 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
+import type { OAuthTokenVerifier } from "@modelcontextprotocol/sdk/server/auth/provider.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { startHttpServer, type HttpServerHandle } from "../src/http.ts";
 import { createServer } from "../src/server.ts";
 
@@ -140,4 +144,123 @@ test("handle.close() can be called only once without error; subsequent close is 
   // Double close should not throw a hard error — Node http Server.close() rejects
   // if not listening; this is acceptable as long as it does not crash the process.
   await handle.close().catch(() => undefined);
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Optional Bearer-token authorization (RFC 9068).
+// We inject a stub OAuthTokenVerifier via the SDK's `requireBearerAuth` so
+// tests don't need a real JWKS server. This proves the WIRING — that
+// startHttpServer mounts the middleware on /mcp and not on /healthz, and
+// that 401 carries the WWW-Authenticate header per spec.
+// ──────────────────────────────────────────────────────────────────────────
+
+const TEST_TOKEN = "test-valid-token";
+
+const stubVerifier: OAuthTokenVerifier = {
+  async verifyAccessToken(token: string): Promise<AuthInfo> {
+    if (token === TEST_TOKEN) {
+      return {
+        token,
+        clientId: "test-client",
+        scopes: ["mcp:read"],
+        // SDK's requireBearerAuth rejects tokens without `expiresAt` (it
+        // refuses unbounded sessions). 1 hour from now is plenty for tests.
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      };
+    }
+    throw new InvalidTokenError("token rejected by stub verifier");
+  },
+};
+
+const RESOURCE_METADATA_URL = "https://example.test/.well-known/oauth-protected-resource";
+
+async function startAuthedTestServer(): Promise<HttpServerHandle> {
+  return startHttpServer({
+    host: "127.0.0.1",
+    port: 0,
+    createServer,
+    serverName: SERVER_NAME,
+    serverVersion: SERVER_VERSION,
+    requireAuth: requireBearerAuth({
+      verifier: stubVerifier,
+      requiredScopes: ["mcp:read"],
+      resourceMetadataUrl: RESOURCE_METADATA_URL,
+    }),
+  });
+}
+
+test("authed mode: POST /mcp without Authorization returns 401 with WWW-Authenticate", async () => {
+  const handle = await startAuthedTestServer();
+  try {
+    const r = await fetch(handle.url, {
+      method: "POST",
+      headers: postHeaders,
+      body: JSON.stringify(initBody(1)),
+    });
+    assert.equal(r.status, 401, "unauthenticated POST must be 401");
+    const wwwAuth = r.headers.get("WWW-Authenticate") ?? "";
+    assert.match(wwwAuth, /Bearer/i, "WWW-Authenticate must advertise Bearer scheme");
+    assert.match(
+      wwwAuth,
+      new RegExp(RESOURCE_METADATA_URL.replace(/\./g, "\\.")),
+      "WWW-Authenticate must advertise the resource_metadata URL per RFC 9728",
+    );
+    await r.body?.cancel();
+  } finally {
+    await handle.close();
+  }
+});
+
+test("authed mode: POST /mcp with valid Bearer token returns 200", async () => {
+  const handle = await startAuthedTestServer();
+  try {
+    const r = await fetch(handle.url, {
+      method: "POST",
+      headers: { ...postHeaders, Authorization: `Bearer ${TEST_TOKEN}` },
+      body: JSON.stringify(initBody(1)),
+    });
+    assert.equal(r.status, 200, "valid token must yield 200");
+    const text = await r.text();
+    assert.match(text, /protocolVersion/);
+  } finally {
+    await handle.close();
+  }
+});
+
+test("authed mode: POST /mcp with invalid Bearer token returns 401", async () => {
+  const handle = await startAuthedTestServer();
+  try {
+    const r = await fetch(handle.url, {
+      method: "POST",
+      headers: { ...postHeaders, Authorization: "Bearer wrong-token" },
+      body: JSON.stringify(initBody(1)),
+    });
+    assert.equal(r.status, 401, "rejected token must be 401");
+    await r.body?.cancel();
+  } finally {
+    await handle.close();
+  }
+});
+
+test("authed mode: GET /healthz remains open (liveness probes have no credentials)", async () => {
+  const handle = await startAuthedTestServer();
+  try {
+    const r = await fetch(`http://127.0.0.1:${handle.port}/healthz`);
+    assert.equal(r.status, 200, "healthz must NOT be gated by bearer auth");
+    const body = (await r.json()) as { ok: boolean };
+    assert.equal(body.ok, true);
+  } finally {
+    await handle.close();
+  }
+});
+
+test("authed mode: GET /mcp without Authorization is also 401 (gate covers all methods)", async () => {
+  const handle = await startAuthedTestServer();
+  try {
+    const r = await fetch(handle.url, { method: "GET" });
+    assert.equal(r.status, 401);
+    await r.body?.cancel();
+  } finally {
+    await handle.close();
+  }
 });

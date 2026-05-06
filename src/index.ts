@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer, SERVER_NAME, SERVER_VERSION } from "./server.js";
 import { startHttpServer, type HttpServerHandle } from "./http.js";
+import { buildAuthHandles, type AuthConfig } from "./http/auth.js";
 import { logger } from "./logger.js";
 
 let httpHandle: HttpServerHandle | null = null;
@@ -22,6 +23,40 @@ async function runHttp(): Promise<void> {
   const allowedHostsEnv = process.env.ALLOWED_HOSTS;
   const allowedHosts = allowedHostsEnv?.split(",").map((s) => s.trim()).filter(Boolean);
 
+  // Optional OAuth 2.1 Bearer-token gate (RFC 9068 + RFC 8707).
+  // Default: MCP_AUTH_MODE=none → no auth (suitable for HOST=127.0.0.1).
+  // Production deployments on a non-localhost interface should set MCP_AUTH_MODE=bearer
+  // and provide the issuer/audience/scopes the deployment expects.
+  const mode = (process.env.MCP_AUTH_MODE ?? "none").toLowerCase();
+  let auth: { requireAuth?: import("express").RequestHandler; metadataRouter?: import("express").RequestHandler } = {};
+  if (mode === "bearer") {
+    const issuer = process.env.MCP_AUTH_ISSUER;
+    const audience = process.env.MCP_AUTH_AUDIENCE;
+    if (!issuer || !audience) {
+      throw new Error(
+        "MCP_AUTH_MODE=bearer requires MCP_AUTH_ISSUER and MCP_AUTH_AUDIENCE",
+      );
+    }
+    const cfg: AuthConfig = {
+      issuer,
+      audience,
+      jwksUrl: process.env.MCP_AUTH_JWKS_URL,
+      requiredScopes: (process.env.MCP_AUTH_REQUIRED_SCOPES ?? "")
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+    const handles = await buildAuthHandles(cfg);
+    auth = { requireAuth: handles.requireAuth, metadataRouter: handles.metadataRouter };
+  } else if (mode !== "none") {
+    throw new Error(`Unknown MCP_AUTH_MODE: ${mode}. Expected "none" or "bearer".`);
+  } else if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    logger.warn(
+      { host },
+      "MCP_AUTH_MODE=none with non-localhost HOST — anyone reachable can call /mcp.",
+    );
+  }
+
   httpHandle = await startHttpServer({
     host,
     port,
@@ -29,6 +64,7 @@ async function runHttp(): Promise<void> {
     createServer,
     serverName: SERVER_NAME,
     serverVersion: SERVER_VERSION,
+    ...auth,
   });
 }
 

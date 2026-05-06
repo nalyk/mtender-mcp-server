@@ -1,6 +1,7 @@
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { RequestHandler } from "express";
 import type { Server as HttpListener } from "node:http";
 import { logger } from "./logger.js";
 
@@ -11,6 +12,13 @@ export interface StartHttpServerOptions {
   createServer: () => McpServer;
   serverName: string;
   serverVersion: string;
+  /** Optional Bearer-token gate for /mcp. When set, requests without a valid
+   *  token receive 401 with a `WWW-Authenticate` header pointing at the PRM.
+   *  Build via `buildAuthHandles` from `./http/auth.ts`. */
+  requireAuth?: RequestHandler;
+  /** Optional `/.well-known/oauth-protected-resource` router. Mounted BEFORE
+   *  any auth middleware so the PRM stays publicly reachable per RFC 9728. */
+  metadataRouter?: RequestHandler;
 }
 
 export interface HttpServerHandle {
@@ -41,7 +49,17 @@ export async function startHttpServer(opts: StartHttpServerOptions): Promise<Htt
       : { host: opts.host },
   );
 
-  app.post("/mcp", async (req, res) => {
+  // Mount the public PRM (/.well-known/oauth-protected-resource{path}) BEFORE
+  // the bearer gate so unauthenticated clients can discover where to obtain
+  // a token. Per RFC 9728 the metadata document MUST be reachable without
+  // credentials.
+  if (opts.metadataRouter) app.use(opts.metadataRouter);
+
+  // Bearer gate. Applied only to /mcp; /healthz stays open so liveness probes
+  // don't require credentials.
+  const mcpGate: RequestHandler[] = opts.requireAuth ? [opts.requireAuth] : [];
+
+  app.post("/mcp", ...mcpGate, async (req, res) => {
     const server = opts.createServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     try {
@@ -60,10 +78,10 @@ export async function startHttpServer(opts: StartHttpServerOptions): Promise<Htt
     }
   });
 
-  app.get("/mcp", (_req, res) => {
+  app.get("/mcp", ...mcpGate, (_req, res) => {
     res.writeHead(405, { "Content-Type": "application/json" }).end(METHOD_NOT_ALLOWED_BODY);
   });
-  app.delete("/mcp", (_req, res) => {
+  app.delete("/mcp", ...mcpGate, (_req, res) => {
     res.writeHead(405, { "Content-Type": "application/json" }).end(METHOD_NOT_ALLOWED_BODY);
   });
 
