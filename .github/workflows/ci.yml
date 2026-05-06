@@ -86,6 +86,78 @@ jobs:
           echo "$out" | grep -q '"name":"search_tenders"'
           echo "$out" | grep -q '"name":"fetch_tender_document"'
 
+  smoke-http:
+    name: streamable-http handshake smoke
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - name: Smoke two sequential POST /mcp requests both succeed
+        shell: bash
+        env:
+          # Defeat any inherited HTTP_PROXY for loopback traffic so curl
+          # speaks to the local server directly.
+          NO_PROXY: "127.0.0.1,localhost"
+          no_proxy: "127.0.0.1,localhost"
+        run: |
+          set -euo pipefail
+          MCP_TRANSPORT=http PORT=8787 HOST=127.0.0.1 LOG_LEVEL=warn \
+            node build/index.js &
+          MCP_PID=$!
+          trap 'kill $MCP_PID 2>/dev/null || true' EXIT
+          # Wait for /healthz to be reachable.
+          for i in $(seq 1 30); do
+            if curl -sSf http://127.0.0.1:8787/healthz >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.5
+          done
+          curl -sSf http://127.0.0.1:8787/healthz | grep -q '"ok":true'
+
+          INIT='{"jsonrpc":"2.0","id":%d,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}'
+
+          # First request: must succeed (was OK on the buggy version too).
+          R1_HTTP=$(printf "$INIT" 1 \
+            | curl -sS --max-time 10 -o /tmp/r1.body -w '%{http_code}' \
+                -X POST http://127.0.0.1:8787/mcp \
+                -H 'Content-Type: application/json' \
+                -H 'Accept: application/json, text/event-stream' \
+                -d @-)
+          echo "request 1: HTTP $R1_HTTP"
+          test "$R1_HTTP" = "200"
+          grep -q 'protocolVersion' /tmp/r1.body
+
+          # Second sequential request: must ALSO succeed. Pre-fix this returned 500.
+          R2_HTTP=$(printf "$INIT" 2 \
+            | curl -sS --max-time 10 -o /tmp/r2.body -w '%{http_code}' \
+                -X POST http://127.0.0.1:8787/mcp \
+                -H 'Content-Type: application/json' \
+                -H 'Accept: application/json, text/event-stream' \
+                -d @-)
+          echo "request 2: HTTP $R2_HTTP"
+          test "$R2_HTTP" = "200"
+          grep -q 'protocolVersion' /tmp/r2.body
+
+          # GET /mcp must be 405 in stateless mode and carry a JSON-RPC error.
+          R3_HTTP=$(curl -sS --max-time 5 -o /tmp/r3.body -w '%{http_code}' http://127.0.0.1:8787/mcp)
+          echo "GET /mcp: HTTP $R3_HTTP"
+          test "$R3_HTTP" = "405"
+          grep -q '"code":-32000' /tmp/r3.body
+
+          # Graceful shutdown: SIGTERM should produce clean exit (code 0).
+          kill -TERM $MCP_PID
+          wait $MCP_PID
+          EXIT=$?
+          echo "exit code: $EXIT"
+          test "$EXIT" = "0"
+
   docker:
     name: docker build
     needs: build-test
