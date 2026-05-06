@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerResources } from "./resources.js";
-import { registerTools } from "./tools.js";
+import { registerTools } from "./tools/index.js";
 import { registerPrompts } from "./prompts.js";
 
 // Single source of truth: read version from package.json at runtime so
