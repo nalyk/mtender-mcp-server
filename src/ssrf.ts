@@ -1,5 +1,5 @@
 import { promises as dns } from "node:dns";
-import net from "node:net";
+import net, { type LookupFunction } from "node:net";
 
 const ALLOWED_DOC_HOST = "storage.mtender.gov.md";
 
@@ -78,4 +78,27 @@ export async function validateDocumentUrl(input: string): Promise<ValidatedDocUr
   // Force https — we have already accepted only the official host.
   url.protocol = "https:";
   return { url, resolvedIp: lookup.address };
+}
+
+/**
+ * Build a `node:net` LookupFunction that resolves any hostname to a fixed,
+ * pre-validated IP. Wired into undici via `Agent({ connect: { lookup } })`,
+ * this closes the TOCTOU window between `validateDocumentUrl`'s `dns.lookup`
+ * and the subsequent HTTPS request — the socket connect step uses the pinned
+ * IP rather than re-resolving DNS.
+ *
+ * The TLS handshake still uses the URL hostname for SNI / certificate
+ * validation, so a rebind to a private IP after validation cannot succeed
+ * even if it had a TLS terminator: the cert subject must still match
+ * `storage.mtender.gov.md`.
+ */
+export function pinnedLookup(resolvedIp: string): LookupFunction {
+  const family: 4 | 6 = net.isIP(resolvedIp) === 6 ? 6 : 4;
+  return (_hostname, options, callback) => {
+    if (options && (options as { all?: boolean }).all) {
+      callback(null, [{ address: resolvedIp, family }], family);
+      return;
+    }
+    callback(null, resolvedIp, family);
+  };
 }

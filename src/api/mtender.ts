@@ -2,6 +2,7 @@ import { request, Agent, errors as undiciErrors } from "undici";
 import { logger } from "../logger.js";
 import { TtlLru } from "../cache.js";
 import { mapBounded } from "../concurrency.js";
+import { pinnedLookup, type ValidatedDocUrl } from "../ssrf.js";
 import {
   TenderListItem,
   TenderSummary,
@@ -409,31 +410,47 @@ export async function getFundingSource(
 }
 
 export async function fetchDocument(
-  url: string,
+  validated: ValidatedDocUrl,
   signal?: AbortSignal,
 ): Promise<{ buffer: Buffer; contentType: string; filename?: string }> {
-  const r = await retry(() =>
-    request(url, {
-      method: "GET",
-      bodyTimeout: REQUEST_TIMEOUT_MS,
-      headersTimeout: REQUEST_TIMEOUT_MS,
-      dispatcher: agent,
-      signal,
-    }),
-  );
-  if (r.statusCode >= 400) {
-    throw new Error(`Document fetch failed: HTTP ${r.statusCode}`);
+  // Per-fetch dispatcher with `connect.lookup` pinned to the IP we already
+  // validated as non-private. Closes the TOCTOU window between
+  // `validateDocumentUrl`'s `dns.lookup` and the actual TCP connect — undici
+  // would otherwise re-resolve DNS independently. SNI / TLS cert validation
+  // still uses the URL hostname (`storage.mtender.gov.md`).
+  const pinnedAgent = new Agent({
+    pipelining: 1,
+    connections: 1,
+    keepAliveTimeout: 5_000,
+    keepAliveMaxTimeout: 10_000,
+    connect: { lookup: pinnedLookup(validated.resolvedIp) },
+  });
+  try {
+    const r = await retry(() =>
+      request(validated.url.href, {
+        method: "GET",
+        bodyTimeout: REQUEST_TIMEOUT_MS,
+        headersTimeout: REQUEST_TIMEOUT_MS,
+        dispatcher: pinnedAgent,
+        signal,
+      }),
+    );
+    if (r.statusCode >= 400) {
+      throw new Error(`Document fetch failed: HTTP ${r.statusCode}`);
+    }
+    const contentType = String(r.headers["content-type"] ?? "application/octet-stream");
+    const cd = r.headers["content-disposition"];
+    let filename: string | undefined;
+    if (typeof cd === "string") {
+      const utf8 = cd.match(/filename\*=utf-8''([^;]+)/i);
+      const plain = cd.match(/filename="?([^";]+)"?/i);
+      filename = utf8 ? decodeURIComponent(utf8[1]!) : plain ? plain[1] : undefined;
+    }
+    const buffer = Buffer.from(await r.body.arrayBuffer());
+    return { buffer, contentType, filename };
+  } finally {
+    await pinnedAgent.close().catch(() => undefined);
   }
-  const contentType = String(r.headers["content-type"] ?? "application/octet-stream");
-  const cd = r.headers["content-disposition"];
-  let filename: string | undefined;
-  if (typeof cd === "string") {
-    const utf8 = cd.match(/filename\*=utf-8''([^;]+)/i);
-    const plain = cd.match(/filename="?([^";]+)"?/i);
-    filename = utf8 ? decodeURIComponent(utf8[1]!) : plain ? plain[1] : undefined;
-  }
-  const buffer = Buffer.from(await r.body.arrayBuffer());
-  return { buffer, contentType, filename };
 }
 
 export function cacheStats(): Record<string, number> {

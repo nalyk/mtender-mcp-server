@@ -622,7 +622,7 @@ export function registerTools(server: McpServer): void {
       const validated = await validateDocumentUrl(documentUrl);
       logger.debug({ url: validated.url.href, ip: validated.resolvedIp, mode }, "fetching document");
       await progress(ctx, 1, 3, "URL validated");
-      const { buffer, contentType, filename } = await fetchDocument(validated.url.href, ctx.signal);
+      const { buffer, contentType, filename } = await fetchDocument(validated, ctx.signal);
       await progress(ctx, 2, 3, `Downloaded ${buffer.byteLength} bytes`);
       const extracted = await extractDocument(buffer, contentType, mode);
       await progress(ctx, 3, 3, extracted.scanned ? "Scanned PDF: returning page images" : "Extracted text");
