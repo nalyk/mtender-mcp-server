@@ -14,6 +14,11 @@ RUN npm install --ignore-scripts && npm run build
 
 FROM gcr.io/distroless/nodejs${NODE_VERSION}-debian12:nonroot
 WORKDIR /app
+# HOST=0.0.0.0 is required for container reachability from outside the
+# pod/host network. Per src/index.ts hardening, the entrypoint will refuse
+# to start unless the operator ALSO sets ALLOWED_HOSTS (DNS-rebind
+# allow-list) or MCP_AUTH_MODE=bearer (OAuth gate). Set one of them via
+# `docker run -e ALLOWED_HOSTS=mcp.example.com -e MCP_AUTH_MODE=...`.
 ENV NODE_ENV=production \
     MCP_TRANSPORT=http \
     HOST=0.0.0.0 \

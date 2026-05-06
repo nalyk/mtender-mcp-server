@@ -51,9 +51,22 @@ async function runHttp(): Promise<void> {
   } else if (mode !== "none") {
     throw new Error(`Unknown MCP_AUTH_MODE: ${mode}. Expected "none" or "bearer".`);
   } else if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") {
+    // Sprint-4 hardening: refuse to start a public-bound HTTP transport that
+    // has neither a host allow-list (DNS-rebind protection) nor a bearer
+    // gate (auth). A silent warn was the previous behavior — too easy to
+    // miss in container logs. Hard-failure forces the operator to make an
+    // explicit security decision before /mcp is reachable from off-host.
+    if (!allowedHosts || allowedHosts.length === 0) {
+      throw new Error(
+        `Refusing to start: HOST="${host}" is non-localhost, MCP_AUTH_MODE=none, ` +
+          `and ALLOWED_HOSTS is not set. This would expose /mcp without ` +
+          `DNS-rebind protection or auth. Set ALLOWED_HOSTS to an explicit ` +
+          `list, enable MCP_AUTH_MODE=bearer, or bind HOST to 127.0.0.1.`,
+      );
+    }
     logger.warn(
-      { host },
-      "MCP_AUTH_MODE=none with non-localhost HOST — anyone reachable can call /mcp.",
+      { host, allowedHosts },
+      "MCP_AUTH_MODE=none on non-localhost HOST — relying on Host-header allow-list for protection.",
     );
   }
 
