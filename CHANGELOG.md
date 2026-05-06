@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Streamable HTTP stateless transport reuse bug.** The previous `runHttp`
+  created a single `McpServer` + `StreamableHTTPServerTransport` at startup
+  and reused them across every request. SDK ≥ 1.26 explicitly forbids this
+  in stateless mode (`sessionIdGenerator: undefined`); only the first request
+  succeeded, subsequent sequential and concurrent POSTs returned HTTP 500
+  with empty body. Extracted the HTTP server into a `src/http.ts:startHttpServer`
+  factory that instantiates a fresh `McpServer` + transport per `app.post('/mcp')`
+  invocation (matching the SDK's `simpleStatelessStreamableHttp.js` example).
+  `app.get('/mcp')` and `app.delete('/mcp')` return JSON-RPC 405 directly —
+  in stateless mode there is no SSE stream to attach to and no session to
+  terminate.
+- **TOCTOU SSRF window in `fetch_tender_document`.** `src/ssrf.ts:52` already
+  promised "the caller MUST use the returned `resolvedIp` ... to defeat
+  TOCTOU rebind", but the wiring was never done. `fetchDocument` passed the
+  URL string to undici, which re-resolved DNS independently. Added
+  `pinnedLookup(resolvedIp): LookupFunction` and a per-call
+  `Agent({ connect: { lookup } })` so the TCP connect targets the validated
+  IP; SNI / TLS cert validation still uses the URL hostname.
+- **Upstream `limit` param ignored in MTender listings.** `listFrom` only
+  ever appended `offset=`; the four `search_*` tools' `limit` schema field
+  was silently truncated to the upstream default page (~100). Threaded
+  `ListOpts.limit` through `listTenders`, `listContractNotices`, `listPlans`,
+  `listBudgets`. Verified live: `?limit=200` returns 200 items.
+- **`server.ts/instructions` claimed "Tools (16):"** while `registerTools`
+  actually registered 17 (server.test.ts already encoded the truth).
+  Aligned to "Tools (17):".
+
+### Added
+
+- **Optional Bearer-token authorization for HTTP transport (RFC 9068, RFC 8707).**
+  Off by default (`MCP_AUTH_MODE=none`). Switch on with `MCP_AUTH_MODE=bearer` +
+  `MCP_AUTH_ISSUER` + `MCP_AUTH_AUDIENCE`; optionally `MCP_AUTH_JWKS_URL` and
+  `MCP_AUTH_REQUIRED_SCOPES`. `JoseTokenVerifier` enforces issuer + audience
+  binding and required scopes; PRM router publishes
+  `/.well-known/oauth-protected-resource{path}` per RFC 9728. `/healthz`
+  remains open so liveness probes need no credentials.
+- **Graceful SIGTERM / SIGINT / uncaught / unhandledRejection shutdown.**
+  Idempotent `shutdown(signal, exitCode)` awaits `httpHandle.close()` /
+  `stdioServer.close()`, then `process.exit(exitCode)` via 50ms `.unref()`
+  timeout for pino flush. Pre-fix the process was killed by signal (exit
+  code 143); now exits 0.
+- **`logging` capability now actually emits.** `server.sendLoggingMessage`
+  was declared in capabilities but never called; wired via a `logEvent`
+  helper at four high-signal points: `scanned_pdf_detected` (info),
+  `aggregate_by_buyer.complete` / `aggregate_by_supplier.complete` (info),
+  `single_bid_scan.complete` (warning).
+- **CI `smoke-http` job.** Parallel to `smoke-stdio`, posts two sequential
+  `initialize` requests and asserts both 200, GET → 405, SIGTERM → exit 0.
+  Pre-fix the HTTP transport-reuse bug would have shipped silently.
+- **`/healthz` endpoint** exposed on the HTTP transport for container
+  liveness probes — returns `{ ok, name, version }`.
+
+### Changed
+
+- **Refactored `src/tools.ts` (734-line monolith) into `src/tools/<group>.ts`.**
+  17 tools split by domain into `search.ts` (5), `tender.ts` (6), `budget.ts`
+  (2), `analytics.ts` (3), `document.ts` (1), with shared helpers in
+  `_shared.ts` and orchestration in `index.ts`. Behavior byte-for-byte
+  identical; the 33-test suite continues to pass with no test changes.
+- `fetchDocument` signature: `(url: string, signal)` → `(validated: ValidatedDocUrl, signal)`.
+  Internal API only — not exported as a public consumer surface.
+
+### Security
+
+- **TOCTOU SSRF closed** in `fetch_tender_document` (see Fixed above). Was
+  in-scope per `SECURITY.md` — finding from architectural re-validation.
+- DNS pinning via `Agent({ connect: { lookup: pinnedLookup(resolvedIp) } })`;
+  TLS cert validation still requires the legitimate `storage.mtender.gov.md`
+  certificate even when the connect IP is pinned.
+
+### Tests
+
+- 20 → 38. New: 7 HTTP transport tests, 5 OAuth gate tests, 3 `pinnedLookup`
+  unit tests, 2 subprocess shutdown tests, 1 upstream-limit live test.
+
 ## [3.1.1] — 2026-05-02
 
 ### Changed
