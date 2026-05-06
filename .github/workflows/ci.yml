@@ -55,8 +55,12 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Audit (high severity gate)
-        run: npm audit --audit-level=high
+      - name: Audit (moderate severity informational gate)
+        # Bumped from `high` to `moderate` so transitive moderates surface in
+        # CI logs (e.g. ip-address GHSA-v2v4-37r5-5v8g via SDK→express-rate-limit).
+        # Stays `continue-on-error: true` because the moderates are not
+        # exploitable in our usage and we don't want CI to block on them.
+        run: npm audit --audit-level=moderate
         continue-on-error: true
 
   smoke-stdio:

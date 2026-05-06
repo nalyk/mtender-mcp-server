@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **⚠️ BREAKING for silently-insecure deployments — refuse to start on
+  insecure HTTP config.** Previously, the entrypoint emitted a
+  `logger.warn` and started anyway when `HOST` was a non-localhost
+  interface with `MCP_AUTH_MODE=none` and no `ALLOWED_HOSTS`. A warning
+  in container logs is the worst kind of insecure-by-default — it scrolls
+  past unnoticed and leaves `/mcp` reachable from the network without
+  DNS-rebind protection or auth. The entrypoint now hard-fails with an
+  explicit error message naming the three remediation paths:
+  - set `ALLOWED_HOSTS` to an explicit Host-header allow-list, OR
+  - enable `MCP_AUTH_MODE=bearer` (RFC 9068 token gate), OR
+  - bind `HOST` to `127.0.0.1`.
+
+  **Operators affected**: anyone running with `HOST=0.0.0.0` (or any
+  non-loopback interface) AND `MCP_AUTH_MODE=none` AND no `ALLOWED_HOSTS`
+  set. Container deployments via the bundled Dockerfile are the most
+  likely impact zone — `HOST=0.0.0.0` is required for container
+  reachability and stays the default, so the explicit env opt-in is now
+  mandatory. Set `ALLOWED_HOSTS=mcp.example.com` (or your real public
+  hostname) on the `docker run` command line, OR enable bearer auth.
+
+  **Operators NOT affected**: stdio-mode deployments, `HOST=127.0.0.1`
+  HTTP deployments, and any HTTP deployment that already set one of
+  `ALLOWED_HOSTS` / `MCP_AUTH_MODE=bearer`.
+
+  Two subprocess tests in `test/shutdown.test.ts` cover the refusal path
+  AND the positive-start path with `ALLOWED_HOSTS` set, so this gate
+  cannot regress to either silently insecure OR over-restrictive.
+
+### Changed
+
+- **CI `npm audit` gate raised from `--audit-level=high` to
+  `--audit-level=moderate`.** Surfaces transitive moderates in CI logs
+  (currently: `ip-address` GHSA-v2v4-37r5-5v8g via SDK ≥ 1.26 →
+  express-rate-limit; not exploitable in our usage — no `Address6` HTML
+  rendering). Stays `continue-on-error: true` because moderate findings
+  should not block PRs while the SDK chain resolves them upstream.
+
 ## [3.2.0] — 2026-05-06
 
 ### Fixed
