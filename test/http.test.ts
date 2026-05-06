@@ -200,10 +200,12 @@ test("authed mode: POST /mcp without Authorization returns 401 with WWW-Authenti
     assert.equal(r.status, 401, "unauthenticated POST must be 401");
     const wwwAuth = r.headers.get("WWW-Authenticate") ?? "";
     assert.match(wwwAuth, /Bearer/i, "WWW-Authenticate must advertise Bearer scheme");
-    assert.match(
-      wwwAuth,
-      new RegExp(RESOURCE_METADATA_URL.replace(/\./g, "\\.")),
-      "WWW-Authenticate must advertise the resource_metadata URL per RFC 9728",
+    // Plain substring check — avoids the partial-escape pitfall of building a
+    // RegExp from a URL via `.replace(/\./g, "\\.")` (CodeQL: "Incomplete
+    // string escaping"; misses backslashes and other regex metachars).
+    assert.ok(
+      wwwAuth.includes(RESOURCE_METADATA_URL),
+      `WWW-Authenticate must advertise the resource_metadata URL per RFC 9728; got: ${wwwAuth}`,
     );
     await r.body?.cancel();
   } finally {
